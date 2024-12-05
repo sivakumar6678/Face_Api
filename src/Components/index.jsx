@@ -1,17 +1,24 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import * as faceapi from 'face-api.js';
+import Modal from 'react-modal';
+import './FaceRecognitionApp.css';
+
+Modal.setAppElement('#root');
 
 function FaceRecognitionApp() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isIdentifying, setIsIdentifying] = useState(false);
   const [userData, setUserData] = useState([]);
-  const [formData, setFormData] = useState({ name: '', age: '' });
+  const [formData, setFormData] = useState({ name: '', age: '', rollNo: '', branch: '', year: '' });
   const [isCameraOn, setIsCameraOn] = useState(false);
-  
+  const [modalMessage, setModalMessage] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [capturedFace, setCapturedFace] = useState(null);
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
-  // Handle form input changes
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -20,144 +27,167 @@ function FaceRecognitionApp() {
     }));
   };
 
-  // Start the camera
   const startCamera = async () => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       videoRef.current.srcObject = stream;
       setIsCameraOn(true);
+    } else {
+      setModalMessage('Camera not supported in this browser!');
+      setIsModalOpen(true);
     }
   };
 
-  // Register the face
-  const registerFace = async () => {
-    if (!formData.name || !formData.age) {
-      alert("Please fill in all details!");
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject;
+      const tracks = stream.getTracks();
+      tracks.forEach((track) => track.stop());
+      videoRef.current.srcObject = null;
+      setIsCameraOn(false);
+    }
+  };
+
+  const captureFace = async () => {
+    if (!videoRef.current) {
+      setModalMessage("Camera is not active!");
+      setIsModalOpen(true);
       return;
     }
-    
-    const detections = await faceapi.detectSingleFace(videoRef.current).withFaceLandmarks().withFaceDescriptor();
-    
+
+    const detections = await faceapi
+      .detectSingleFace(videoRef.current)
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+
     if (detections) {
-      const newUserData = {
-        name: formData.name,
-        age: formData.age,
-        faceEmbedding: detections.descriptor,
-      };
-      setUserData((prevData) => [...prevData, newUserData]);
-      alert("Face Registered Successfully!");
-      setIsRegistering(false);
-      setFormData({ name: '', age: '' });
+      setCapturedFace(detections.descriptor);
+      setModalMessage("Face captured successfully!");
+      const canvas = canvasRef.current;
+      const displaySize = { width: videoRef.current.width, height: videoRef.current.height };
+      faceapi.matchDimensions(canvas, displaySize);
+      const resizedDetections = faceapi.resizeResults(detections, displaySize);
+      faceapi.draw.drawDetections(canvas, resizedDetections);
+      // Automatically stop the camera after capturing the face
+      stopCamera();
     } else {
-      alert("No face detected, try again!");
+      setModalMessage("No face detected, please try again!");
     }
+
+    setIsModalOpen(true);
   };
 
-  // Identify a face
+  const registerUser = () => {
+    if (!formData.name || !formData.age || !formData.rollNo || !formData.branch || !formData.year || !capturedFace) {
+      setModalMessage('Please fill in all details and capture your face!');
+      setIsModalOpen(true);
+      return;
+    }
+
+    const newUser = {
+      ...formData,
+      faceEmbedding: capturedFace,
+    };
+
+    setUserData((prev) => [...prev, newUser]);
+    setModalMessage('User Registered Successfully!');
+    setIsModalOpen(true);
+
+    // Reset form and state
+    setFormData({ name: '', age: '', rollNo: '', branch: '', year: '' });
+    setCapturedFace(null);
+    setIsRegistering(false);
+  };
+
   const identifyFace = async () => {
-    const detections = await faceapi.detectSingleFace(videoRef.current).withFaceLandmarks().withFaceDescriptor();
-    
+    setLoading(true);
+    if (!isCameraOn) await startCamera();
+
+    const detections = await faceapi
+      .detectSingleFace(videoRef.current)
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+
     if (detections) {
-      const labeledDescriptors = userData.map(user => new faceapi.LabeledFaceDescriptors(user.name, [user.faceEmbedding]));
+      const labeledDescriptors = userData.map((user) =>
+        new faceapi.LabeledFaceDescriptors(user.name, [user.faceEmbedding])
+      );
       const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
       const bestMatch = faceMatcher.findBestMatch(detections.descriptor);
 
-      if (bestMatch) {
-        alert(`Identified as: ${bestMatch.label}`);
+      if (bestMatch && bestMatch.label !== 'unknown') {
+        setModalMessage(`Identified as: ${bestMatch.label}`);
       } else {
-        alert("No match found.");
+        setModalMessage('No match found.');
       }
+    } else {
+      setModalMessage('No face detected, try again!');
     }
+
+    setLoading(false);
+    setIsModalOpen(true);
+    stopCamera(); // Stop camera after identification
   };
 
-  // Handle button clicks
-  const handleRegisterClick = () => {
-    setIsRegistering(true);
-    startCamera();
-  };
-
-  const handleIdentifyClick = () => {
-    setIsIdentifying(true);
-    startCamera();
-  };
-
-  // Load face-api models
   const loadModels = async () => {
+    setLoading(true);
     await faceapi.nets.ssdMobilenetv1.loadFromUri('/models');
     await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
     await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
+    setLoading(false);
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     loadModels();
   }, []);
 
   return (
-    <div>
+    <div className="app-container">
       <h1>Face Recognition App</h1>
 
+      {loading && <div className="loading-indicator">Loading models...</div>}
+
       {!isRegistering && !isIdentifying && (
-        <div>
-          <button onClick={handleRegisterClick}>Register Face</button>
-          <button onClick={handleIdentifyClick}>Identify Face</button>
+        <div className="button-container">
+          <button onClick={() => setIsRegistering(true)}>Register Face</button>
+          <button onClick={() => setIsIdentifying(true)}>Identify Face</button>
         </div>
       )}
 
       {isRegistering && (
-        <div>
+        <div className="form-container">
           <h2>Register New User</h2>
-          <form onSubmit={(e) => { e.preventDefault(); registerFace(); }}>
-            <input
-              type="text"
-              name="name"
-              placeholder="Name"
-              value={formData.name}
-              onChange={handleInputChange}
-              required
-            />
-            <input
-              type="number"
-              name="age"
-              placeholder="Age"
-              value={formData.age}
-              onChange={handleInputChange}
-              required
-            />
-            <button type="submit">Register Face</button>
+          <form onSubmit={(e) => e.preventDefault()}>
+            <input type="text" name="name" placeholder="Name" value={formData.name} onChange={handleInputChange} required />
+            <input type="number" name="age" placeholder="Age" value={formData.age} onChange={handleInputChange} required />
+            <input type="text" name="rollNo" placeholder="Roll No" value={formData.rollNo} onChange={handleInputChange} required />
+            <input type="text" name="branch" placeholder="Branch" value={formData.branch} onChange={handleInputChange} required />
+            <input type="text" name="year" placeholder="Year" value={formData.year} onChange={handleInputChange} required />
+            <button type="button" onClick={startCamera}>Start Camera</button>
+            <button type="button" onClick={captureFace}>Capture Face</button>
+            <button type="button" onClick={registerUser}>Register User</button>
+            <button type="button" onClick={() => { setIsRegistering(false); stopCamera(); }}>Cancel</button>
           </form>
         </div>
       )}
 
       {isIdentifying && (
-        <div>
-          <h2>Identifying...</h2>
+        <div className="identifying-container">
+          <h2>Identify User</h2>
           <button onClick={identifyFace}>Start Identification</button>
+          <button type="button" onClick={() => { setIsIdentifying(false); stopCamera(); }}>Cancel</button>
         </div>
       )}
 
-      <div style={{ position: 'relative' }}>
-        <video
-          ref={videoRef}
-          width="640"
-          height="480"
-          autoPlay
-          muted
-          onPlay={() => {
-            if (canvasRef.current) {
-              const interval = setInterval(async () => {
-                const detections = await faceapi.detectSingleFace(videoRef.current).withFaceLandmarks().withFaceDescriptor();
-                canvasRef.current?.clear();
-                faceapi.matchDimensions(canvasRef.current, videoRef.current);
-                canvasRef.current?.drawDetections(detections);
-              }, 100);
-              return () => clearInterval(interval);
-            }
-          }}
-        />
-        <canvas ref={canvasRef} style={{ position: 'absolute' }} />
+      <div className="video-container" style={{ position: 'relative' }}>
+        <video ref={videoRef} width="640" height="480" autoPlay muted />
+        <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0 }} />
       </div>
+
+      <Modal isOpen={isModalOpen} onRequestClose={() => setIsModalOpen(false)} contentLabel="Notification">
+        <h2>{modalMessage}</h2>
+        <button onClick={() => setIsModalOpen(false)}>Close</button>
+      </Modal>
     </div>
   );
 }

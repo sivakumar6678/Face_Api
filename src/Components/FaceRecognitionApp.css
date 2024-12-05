@@ -1,0 +1,82 @@
+
+/* FaceRecognitionApp.css */
+
+.app-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+    min-height: 100vh;
+  }
+  
+  h1 {
+    color: #333;
+  }
+  
+  .button-container {
+    margin: 20px 0;
+  }
+  
+  button {
+    padding: 10px 20px;
+    margin: 5px;
+    border: none;
+    border-radius: 5px;
+    background-color: #007bff;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+  
+  button:hover {
+    background-color: #0056b3;
+  }
+  
+  .form-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 20px 0;
+  }
+  
+  input {
+    padding: 10px;
+    margin: 5px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    width: 200px;
+  }
+  
+  .loading-indicator {
+    font-size: 18px;
+    color: #007bff;
+  }
+  
+  .video-container {
+    margin: 20px 0;
+  }
+  
+  canvas {
+    border: 1px solid #ccc;
+  }
+  
+  .identifying-container {
+    margin: 20px 0;
+  }
+  
+  .modal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .modal h2 {
+    margin-bottom: 20px;
+  }
+  
+  .modal button {
+    margin-top: 10px;
+  }
