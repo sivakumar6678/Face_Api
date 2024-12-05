@@ -8,13 +8,12 @@ Modal.setAppElement('#root');
 function FaceRecognitionApp() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isIdentifying, setIsIdentifying] = useState(false);
-  const [userData, setUserData] = useState([]);
+  const [userData, setUserData] = useState([]); // Store multiple users
   const [formData, setFormData] = useState({ name: '', age: '', rollNo: '', branch: '', year: '' });
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [modalMessage, setModalMessage] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [capturedFace, setCapturedFace] = useState(null);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -61,42 +60,44 @@ function FaceRecognitionApp() {
       .withFaceDescriptor();
 
     if (detections) {
-      setCapturedFace(detections.descriptor);
-      setModalMessage("Face captured successfully!");
       const canvas = canvasRef.current;
       const displaySize = { width: videoRef.current.width, height: videoRef.current.height };
       faceapi.matchDimensions(canvas, displaySize);
       const resizedDetections = faceapi.resizeResults(detections, displaySize);
       faceapi.draw.drawDetections(canvas, resizedDetections);
-      // Automatically stop the camera after capturing the face
-      stopCamera();
+
+      return detections.descriptor; // Return the face descriptor for registration
     } else {
       setModalMessage("No face detected, please try again!");
+      setIsModalOpen(true);
+      return null;
     }
-
-    setIsModalOpen(true);
   };
 
-  const registerUser = () => {
-    if (!formData.name || !formData.age || !formData.rollNo || !formData.branch || !formData.year || !capturedFace) {
-      setModalMessage('Please fill in all details and capture your face!');
+  const registerUser = async () => {
+    if (!formData.name || !formData.age || !formData.rollNo || !formData.branch || !formData.year) {
+      setModalMessage('Please fill in all details!');
       setIsModalOpen(true);
       return;
     }
 
-    const newUser = {
-      ...formData,
-      faceEmbedding: capturedFace,
-    };
+    const faceDescriptor = await captureFace();
 
-    setUserData((prev) => [...prev, newUser]);
-    setModalMessage('User Registered Successfully!');
-    setIsModalOpen(true);
+    if (faceDescriptor) {
+      const newUser = {
+        ...formData,
+        faceDescriptor, // Store the face descriptor
+      };
 
-    // Reset form and state
-    setFormData({ name: '', age: '', rollNo: '', branch: '', year: '' });
-    setCapturedFace(null);
-    setIsRegistering(false);
+      setUserData((prev) => [...prev, newUser]);
+      setModalMessage('User Registered Successfully!');
+      setIsModalOpen(true);
+
+      // Reset form and state
+      setFormData({ name: '', age: '', rollNo: '', branch: '', year: '' });
+      stopCamera();
+      setIsRegistering(false);
+    }
   };
 
   const identifyFace = async () => {
@@ -110,9 +111,10 @@ function FaceRecognitionApp() {
 
     if (detections) {
       const labeledDescriptors = userData.map((user) =>
-        new faceapi.LabeledFaceDescriptors(user.name, [user.faceEmbedding])
+        new faceapi.LabeledFaceDescriptors(user.name, [user.faceDescriptor])
       );
-      const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
+
+      const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6); // Adjust threshold if needed
       const bestMatch = faceMatcher.findBestMatch(detections.descriptor);
 
       if (bestMatch && bestMatch.label !== 'unknown') {
@@ -126,7 +128,7 @@ function FaceRecognitionApp() {
 
     setLoading(false);
     setIsModalOpen(true);
-    stopCamera(); // Stop camera after identification
+    stopCamera();
   };
 
   const loadModels = async () => {
@@ -164,7 +166,6 @@ function FaceRecognitionApp() {
             <input type="text" name="branch" placeholder="Branch" value={formData.branch} onChange={handleInputChange} required />
             <input type="text" name="year" placeholder="Year" value={formData.year} onChange={handleInputChange} required />
             <button type="button" onClick={startCamera}>Start Camera</button>
-            <button type="button" onClick={captureFace}>Capture Face</button>
             <button type="button" onClick={registerUser}>Register User</button>
             <button type="button" onClick={() => { setIsRegistering(false); stopCamera(); }}>Cancel</button>
           </form>
