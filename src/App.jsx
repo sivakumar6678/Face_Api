@@ -7,7 +7,7 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <h1>Face Recognition App</h1>
+        {/* <h1>Face Recognition App</h1> */}
         <FaceRecognition />
       </header>
     </div>
